@@ -1,0 +1,106 @@
+import streamlit as st
+import sounddevice as sd
+import soundfile as sf
+import sys
+import os
+import speech_recognition as sr
+
+# Variable pour suivre l'état de l'enregistrement
+is_recording = False
+
+# Variable pour stocker le nom du fichier audio temporaire
+temp_audio_filename = None
+
+# Fonction pour générer un nom de fichier audio temporaire unique
+def generate_temp_audio_filename():
+    return "temp_{0}.wav".format(os.urandom(8).hex())
+
+# Fonction pour l'enregistrement audio
+def record_audio(filename):
+    global is_recording
+    is_recording = True  # Mettre à True avant d'entrer dans la fonction
+    with sd.InputStream(device=selected_device, channels=1, callback=audio_callback):
+        st.write("Enregistrement audio en cours...")
+        while is_recording:
+            pass
+        sd.stop()
+    is_recording = False  # Mettre à False à la fin de l'enregistrement
+    return filename
+
+# Fonction de rappel pour traiter l'audio en temps réel
+def audio_callback(indata, frames, time, status):
+    if status:
+        print(status, file=sys.stderr)
+    if any(indata):
+        with sf.SoundFile(temp_audio_filename, mode="w", samplerate=16000, channels=1) as file:
+            file.write(indata)
+
+# Fonction pour la transcription vocale
+def transcribe_speech(recognizer, api, lang):
+    with sr.AudioFile(temp_audio_filename) as source:
+        audio = recognizer.record(source)
+    if api == "Google":
+        return recognizer.recognize_google(audio, language=lang)
+    elif api == "Microsoft Azure":
+        # Ajoutez le code pour utiliser Microsoft Azure ici
+        pass
+    elif api == "IBM Watson":
+        # Ajoutez le code pour utiliser IBM Watson ici
+        pass
+    return ""
+
+# Titre de l'application
+st.title("Application de Reconnaissance Vocale")
+
+# Option pour choisir l'API de reconnaissance vocale
+selected_api = st.selectbox("Choisissez l'API de reconnaissance vocale", ["Google", "Microsoft Azure", "IBM Watson"])
+
+# Sélection de la langue
+language = st.selectbox("Choisissez la langue de transcription", ["en-US", "fr-FR"])
+
+# Obtenir la liste des périphériques audio disponibles
+audio_devices = sd.query_devices()
+audio_device_names = [device['name'] for device in audio_devices]
+
+# Sélection de périphérique audio
+selected_device = st.selectbox("Choisissez le périphérique audio", audio_device_names)
+
+# Bouton pour démarrer la transcription vocale
+if not is_recording and st.button("Démarrer la transcription"):
+    # Générez un nom de fichier audio temporaire unique
+    temp_audio_filename = generate_temp_audio_filename()
+
+    # Initialisez la classe recognizer
+    r = sr.Recognizer()
+
+    st.info("Cliquez sur 'Arrêter la transcription' pour terminer l'enregistrement.")
+
+    # Enregistrez l'audio avec le nom de fichier temporaire
+    temp_audio_filename = record_audio(temp_audio_filename)
+
+    st.info("Transcription en cours...")
+
+    # Traitez l'audio enregistré
+    audio_text = ""
+    with sr.AudioFile(temp_audio_filename) as source:
+        while is_recording:
+            try:
+                audio_text += transcribe_speech(r, selected_api, language)
+                st.text("Texte transcrit:")
+                st.text(audio_text)
+            except sr.UnknownValueError:
+                st.warning("Aucune parole détectée.")
+            except sr.RequestError as e:
+                st.error(f"Erreur de connexion à l'API de reconnaissance vocale : {e}")
+
+# Bouton pour arrêter l'enregistrement
+if is_recording:
+    if st.button("Arrêter la transcription"):
+        is_recording = False
+
+# Bouton pour enregistrer le texte transcrit dans un fichier
+if not is_recording:
+    if st.button("Enregistrer dans un fichier"):
+        with open("transcription.txt", "w", encoding="utf-8") as file:
+            file.write(audio_text)
+        st.success("Texte enregistré dans 'transcription.txt'")
